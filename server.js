@@ -2,8 +2,11 @@
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
+const { engine } = require('express-handlebars');
+
 
 // Configuración inicial del servidor
+const { Server } = require('socket.io');
 const app = express();
 const PORT = 8080;
 
@@ -204,3 +207,35 @@ app.use('/api/carts', cartsRouter);
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
+
+// configuraciones tanto de Socket.IO como de HandleBars
+
+// configuracion de Handlebars
+app.engine('handlebars', engine());
+app.set('view engine', 'handlebars');
+app.set('views', path.join(__dirname, 'views'));
+
+// middleware para archivos estaticos
+app.use(express.static(path.join(__dirname, 'public')));
+
+// endpoint principal
+app.get('/', (req, res) => {
+    res.render('home', { products: [] }); // por ahora, envio una lista vacia
+});
+
+// configuracion de Socket.IO
+const httpServer = app.listen(PORT, () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+});
+const io = new Server(httpServer);
+
+io.on('connection', (socket) => {
+    console.log('Nuevo cliente conectado');
+    socket.on('disconnect', () => {
+        console.log('Cliente desconectado');
+    });
+});
+
+
+
+
