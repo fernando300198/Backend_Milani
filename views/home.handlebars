@@ -1,18 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Productos</title>
+    <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <h1>Lista de productos</h1>
-    <ul>
-        {{#each products}}
-            <li>
-                <strong>{{this.title}}</strong> - {{this.description}} ({{this.price}} USD)
-            </li>
-        {{/each}}
-    </ul>
+    <header>
+        <h1>Lista de Productos</h1>
+        <nav>
+            <a href="/">Inicio</a> |
+            <a href="/realtimeproducts">Vista en Tiempo Real</a>
+        </nav>
+    </header>
+    <main>
+        {{#if products.length}}
+            <ul>
+                {{#each products}}
+                <li>
+                    <strong>{{this.title}}</strong> - ${{this.price}}
+                    <p>{{this.description}}</p>
+                </li>
+                {{/each}}
+            </ul>
+        {{else}}
+            <p>No hay productos disponibles.</p>
+        {{/if}}
+    </main>
 </body>
 </html>

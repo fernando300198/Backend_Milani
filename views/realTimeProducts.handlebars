@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Productos en Tiempo Real</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Productos en Tiempo Real</h1>
+        <nav>
+            <a href="/">Inicio</a> |
+            <a href="/realtimeproducts">Vista en Tiempo Real</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>Agregar Producto</h2>
+            <form id="addProductForm">
+                <input type="text" id="title" placeholder="Título" required>
+                <input type="text" id="description" placeholder="Descripción" required>
+                <input type="number" id="price" placeholder="Precio" required>
+                <button type="submit">Agregar</button>
+            </form>
+        </section>
+        <section>
+            <h2>Lista de Productos</h2>
+            <ul id="productList">
+            </ul>
+        </section>
+    </main>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const productList = document.getElementById('productList');
+        const addProductForm = document.getElementById('addProductForm');
+
+        // listen productos actualizados
+        socket.on('updateProducts', (products) => {
+            productList.innerHTML = '';
+            products.forEach(product => {
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${product.title}</strong> - $${product.price}<br>${product.description}
+                <button onclick="deleteProduct('${product.id}')">Eliminar</button>`;
+                productList.appendChild(li);
+            });
+        });
+
+        // agregar producto
+        addProductForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newProduct = {
+                title: document.getElementById('title').value,
+                description: document.getElementById('description').value,
+                price: parseFloat(document.getElementById('price').value)
+            };
+            socket.emit('addProduct', newProduct);
+            addProductForm.reset();
+        });
+
+        // eliminar producto
+        function deleteProduct(productId) {
+            socket.emit('deleteProduct', productId);
+        }
+    </script>
+</body>
+</html>

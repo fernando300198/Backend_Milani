@@ -1,23 +1,31 @@
-// módulos necesarios
+// modules necesarios
 const express = require('express');
-const fs = require('fs').promises;
-const path = require('path');
 const { engine } = require('express-handlebars');
-
-
-// Configuración inicial del servidor
+const path = require('path');
+const fs = require('fs').promises;
 const { Server } = require('socket.io');
+const http = require('http');
+
+// config inicial del server
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 const PORT = 8080;
 
-// Middleware de JSON
+// midleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Directorios para archivos de persistencia
+// config de Handlebars
+app.engine('handlebars', engine());
+app.set('view engine', 'handlebars');
+app.set('views', path.join(__dirname, 'views'));
+
+// Directorios archivos de persistencia
 const productsFilePath = path.join(__dirname, 'productos.json');
-const cartsFilePath = path.join(__dirname, 'carrito.json');
 
-// Funciones reutilizables para manejo de archivos
+// Funciones para manejo de archivos
 const readFileData = async (filePath) => {
     try {
         const data = await fs.readFile(filePath, 'utf-8');
@@ -31,211 +39,55 @@ const writeFileData = async (filePath, data) => {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2));
 };
 
-// Verificacion de archivos, si no existen, crearlos vacíos
+// Inicializar archivo de productos si no existe
 const initializeFiles = async () => {
     try {
         await fs.access(productsFilePath).catch(() => writeFileData(productsFilePath, []));
-        await fs.access(cartsFilePath).catch(() => writeFileData(cartsFilePath, []));
-        console.log('Archivos inicializados correctamente.');
+        console.log('Archivo de productos inicializado correctamente.');
     } catch (error) {
-        console.error('Error al inicializar los archivos:', error);
+        console.error('Error al inicializar el archivo:', error);
     }
 };
-
-// función para inicializar los archivos
 initializeFiles();
 
-//  rutas para /api/products
-const productsRouter = express.Router();
-
-// GET /api/products - todos los productos
-productsRouter.get('/', async (req, res) => {
-    try {
-        const products = await readFileData(productsFilePath);
-        const limit = parseInt(req.query.limit);
-        if (!isNaN(limit)) {
-            return res.json(products.slice(0, limit));
-        }
-        res.json(products);
-    } catch (error) {
-        res.status(500).json({ error: 'No se pudieron cargar los productos. Intenta de nuevo.' });
-    }
+// ruta de vistas
+app.get('/', async (req, res) => {
+    const products = await readFileData(productsFilePath);
+    res.render('home', { products });
 });
 
-// GET /api/products/:pid - producto por ID
-productsRouter.get('/:pid', async (req, res) => {
-    try {
-        const { pid } = req.params;
-        const products = await readFileData(productsFilePath);
-        const product = products.find(p => p.id === pid);
-        if (!product) {
-            return res.status(404).json({ error: `El producto con ID ${pid} no existe.` });
-        }
-        res.json(product);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al buscar el producto. Revisa el ID e inténtalo nuevamente.' });
-    }
+app.get('/realtimeproducts', async (req, res) => {
+    const products = await readFileData(productsFilePath);
+    res.render('realTimeProducts', { products });
 });
 
-// POST /api/products - Crear nuevo producto
-productsRouter.post('/', async (req, res) => {
-    try {
-        const { title, description, code, price, status = true, stock, category, thumbnails = [] } = req.body;
-        if (!title || !description || !code || !price || stock === undefined || !category) {
-            return res.status(400).json({ error: 'Faltan campos obligatorios (excepto thumbnails).' });
-        }
-        const products = await readFileData(productsFilePath);
-        const newProduct = {
-            id: Date.now().toString(), // Generando ID único basado en timestamp
-            title,
-            description,
-            code,
-            price,
-            status,
-            stock,
-            category,
-            thumbnails
-        };
-        products.push(newProduct);
-        await writeFileData(productsFilePath, products);
-        res.status(201).json(newProduct);
-    } catch (error) {
-        res.status(500).json({ error: 'No se pudo crear el producto. Intenta más tarde.' });
-    }
-});
-
-// PUT /api/products/:pid - Actualizar producto
-productsRouter.put('/:pid', async (req, res) => {
-    try {
-        const { pid } = req.params;
-        const updates = req.body;
-        const products = await readFileData(productsFilePath);
-        const productIndex = products.findIndex(p => p.id === pid);
-        if (productIndex === -1) {
-            return res.status(404).json({ error: `Producto con ID ${pid} no encontrado.` });
-        }
-        const updatedProduct = { ...products[productIndex], ...updates, id: pid };
-        products[productIndex] = updatedProduct;
-        await writeFileData(productsFilePath, products);
-        res.json(updatedProduct);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al actualizar el producto. Intenta nuevamente.' });
-    }
-});
-
-// DELETE /api/products/:pid - Eliminando un producto
-productsRouter.delete('/:pid', async (req, res) => {
-    try {
-        const { pid } = req.params;
-        const products = await readFileData(productsFilePath);
-        const updatedProducts = products.filter(p => p.id !== pid);
-        if (products.length === updatedProducts.length) {
-            return res.status(404).json({ error: `No se encontró el producto con ID ${pid}.` });
-        }
-        await writeFileData(productsFilePath, updatedProducts);
-        res.status(204).send();
-    } catch (error) {
-        res.status(500).json({ error: 'No se pudo eliminar el producto. Intenta de nuevo.' });
-    }
-});
-
-// Configuración de rutas para /api/carts
-const cartsRouter = express.Router();
-
-// POST /api/carts - Crear un nuevo carrito
-cartsRouter.post('/', async (req, res) => {
-    try {
-        const carts = await readFileData(cartsFilePath);
-        const newCart = {
-            id: Date.now().toString(), // Generar un ID único basado en timestamp
-            products: []
-        };
-        carts.push(newCart);
-        await writeFileData(cartsFilePath, carts);
-        res.status(201).json(newCart);
-    } catch (error) {
-        res.status(500).json({ error: 'No se pudo crear el carrito. Intenta más tarde.' });
-    }
-});
-
-// GET /api/carts/:cid - Obtener productos de un carrito por ID
-cartsRouter.get('/:cid', async (req, res) => {
-    try {
-        const { cid } = req.params;
-        const carts = await readFileData(cartsFilePath);
-        const cart = carts.find(c => c.id === cid);
-        if (!cart) {
-            return res.status(404).json({ error: `El carrito con ID ${cid} no existe.` });
-        }
-        res.json(cart.products);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al buscar el carrito. Revisa el ID e inténtalo nuevamente.' });
-    }
-});
-
-// POST /api/carts/:cid/product/:pid - Agregar producto a un carrito
-cartsRouter.post('/:cid/product/:pid', async (req, res) => {
-    try {
-        const { cid, pid } = req.params;
-        const carts = await readFileData(cartsFilePath);
-        const products = await readFileData(productsFilePath);
-        const cart = carts.find(c => c.id === cid);
-        if (!cart) {
-            return res.status(404).json({ error: `El carrito con ID ${cid} no existe.` });
-        }
-        const productExists = products.some(p => p.id === pid);
-        if (!productExists) {
-            return res.status(404).json({ error: `El producto con ID ${pid} no existe.` });
-        }
-        const productInCart = cart.products.find(p => p.product === pid);
-        if (productInCart) {
-            productInCart.quantity += 1;
-        } else {
-            cart.products.push({ product: pid, quantity: 1 });
-        }
-        await writeFileData(cartsFilePath, carts);
-        res.status(201).json(cart);
-    } catch (error) {
-        res.status(500).json({ error: 'No se pudo agregar el producto al carrito. Intenta nuevamente.' });
-    }
-});
-
-// Router de carritos
-app.use('/api/carts', cartsRouter);
-
-// Servidor en el puerto definido 
-app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
-
-// configuraciones tanto de Socket.IO como de HandleBars
-
-// configuracion de Handlebars
-app.engine('handlebars', engine());
-app.set('view engine', 'handlebars');
-app.set('views', path.join(__dirname, 'views'));
-
-// middleware para archivos estaticos
-app.use(express.static(path.join(__dirname, 'public')));
-
-// endpoint principal
-app.get('/', (req, res) => {
-    res.render('home', { products: [] }); // por ahora, envio una lista vacia
-});
-
-// configuracion de Socket.IO
-const httpServer = app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
-const io = new Server(httpServer);
-
+// config de Socket.IO
 io.on('connection', (socket) => {
     console.log('Nuevo cliente conectado');
+
+    // Agregar un producto
+    socket.on('addProduct', async (newProduct) => {
+        const products = await readFileData(productsFilePath);
+        newProduct.id = Date.now().toString(); // Generar un ID único
+        products.push(newProduct);
+        await writeFileData(productsFilePath, products);
+        io.emit('updateProducts', products); // Enviar productos actualizados
+    });
+
+    // Eliminar un producto
+    socket.on('deleteProduct', async (productId) => {
+        let products = await readFileData(productsFilePath);
+        products = products.filter((product) => product.id !== productId);
+        await writeFileData(productsFilePath, products);
+        io.emit('updateProducts', products); // Enviar productos actualizados
+    });
+
     socket.on('disconnect', () => {
         console.log('Cliente desconectado');
     });
 });
 
-
-
-
+// Iniciar servidor
+server.listen(PORT, () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+});
